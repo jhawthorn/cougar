@@ -10,14 +10,14 @@ module Cougar
     def initialize
       @env = {}
       @headers = {}
-      @body = ""
+      @body = String.new
       @complete = false
       @current_header = nil
     end
 
     def on_message_begin
       @headers.clear
-      @body = ""
+      @body = String.new
       @env.clear
       @complete = false
     end
