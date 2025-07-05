@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'json'
+
 class MyApp
   def self.call(env)
     path = env["PATH_INFO"]
@@ -8,7 +10,8 @@ class MyApp
     when "/"
       [200, {"Content-Type" => "text/plain"}, ["Hello from Cougar!\n"]]
     when "/json"
-      [200, {"Content-Type" => "application/json"}, ['{"message": "Hello from Cougar!"}']]
+      response = JSON.generate(message: "Hello, World!")
+      [200, {"Content-Type" => "application/json"}, [response]]
     when "/headers"
       headers_info = env.select { |k, v| k.start_with?("HTTP_") }
         .map { |k, v| "#{k}: #{v}" }
