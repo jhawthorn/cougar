@@ -50,7 +50,9 @@ module Cougar
 
       # Convert headers to Rack format
       @headers.each do |name, value|
-        key = "HTTP_#{name.upcase.gsub("-", "_")}"
+        key = "HTTP_#{name}"
+        key.upcase!
+        key.tr!("-", "_")
         @env[key] = value
       end
 
