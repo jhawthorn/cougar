@@ -39,8 +39,17 @@ module Cougar
 
     def on_headers_complete
       @env["SCRIPT_NAME"] = ""
-      @env["SERVER_NAME"] = "localhost"
-      @env["SERVER_PORT"] = "9292"
+
+      # Extract SERVER_NAME and SERVER_PORT from Host header
+      if @headers["Host"]
+        host, port = @headers["Host"].split(":", 2)
+        @env["SERVER_NAME"] = host
+        @env["SERVER_PORT"] = port || "80"
+      else
+        @env["SERVER_NAME"] = "localhost"
+        @env["SERVER_PORT"] = "80"
+      end
+
       @env["rack.version"] = [1, 3]
       @env["rack.url_scheme"] = "http"
       @env["rack.errors"] = $stderr
@@ -82,7 +91,7 @@ module Cougar
       while !@delegate.complete && (data = @client.readpartial(16384))
         @parser << data
       end
-      
+
       @delegate.complete
     rescue EOFError
       @delegate.complete
@@ -96,16 +105,16 @@ module Cougar
 
     def respond(status, headers, body)
       @client.write("HTTP/1.1 #{status} #{status_text(status)}\r\n")
-      
+
       headers.each do |name, value|
         @client.write("#{name}: #{value}\r\n")
       end
       @client.write("\r\n")
-      
+
       body.each do |chunk|
         @client.write(chunk)
       end
-      
+
       body.close if body.respond_to?(:close)
     ensure
       @client.close rescue nil

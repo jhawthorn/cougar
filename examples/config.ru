@@ -17,6 +17,8 @@ class MyApp
         .map { |k, v| "#{k}: #{v}" }
         .join("\n")
       [200, {"Content-Type" => "text/plain"}, ["Request Headers:\n#{headers_info}\n"]]
+    when "/env"
+      [200, {"Content-Type" => "text/plain"}, [env.inspect]]
     when "/echo"
       body = env["rack.input"].read
       [200, {"Content-Type" => "text/plain"}, ["Method: #{env["REQUEST_METHOD"]}\nBody: #{body}\nContent-Length: #{env["CONTENT_LENGTH"]}\n"]]
