@@ -2,6 +2,7 @@
 
 require "stringio"
 require "llhttp"
+require_relative "http_statuses"
 
 module Cougar
   class RequestDelegate < LLHttp::Delegate
@@ -123,23 +124,7 @@ module Cougar
     private
 
     def status_text(code)
-      case code
-      when 200 then "OK"
-      when 201 then "Created"
-      when 204 then "No Content"
-      when 301 then "Moved Permanently"
-      when 302 then "Found"
-      when 304 then "Not Modified"
-      when 400 then "Bad Request"
-      when 401 then "Unauthorized"
-      when 403 then "Forbidden"
-      when 404 then "Not Found"
-      when 405 then "Method Not Allowed"
-      when 500 then "Internal Server Error"
-      when 502 then "Bad Gateway"
-      when 503 then "Service Unavailable"
-      else "Unknown"
-      end
+      HttpStatuses.text_for(code)
     end
   end
 end
