@@ -16,6 +16,8 @@ module Cougar
     end
 
     def start
+      silence_ractor_warning!
+
       @server = TCPServer.new(@host, @port)
       @port = @server.addr[1]  # Get the actual port if it was 0
       puts "Cougar listening on #{@host}:#{@port} with #{@workers} workers"
@@ -87,6 +89,15 @@ module Cougar
 
       # Wait for workers to finish
       @worker_ractors.each(&:join)
+    end
+
+    private
+
+    def silence_ractor_warning!
+      warning_was = Warning[:experimental]
+      Warning[:experimental] = false
+      Ractor.new{}.join
+      Warning[:experimental] = warning_was
     end
   end
 end
