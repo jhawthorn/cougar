@@ -34,19 +34,11 @@ class TestIntegration < Minitest::Test
   
   def setup
     @server = Cougar::Server.new(TestApp, host: "localhost", port: TEST_PORT, workers: 2)
-    @server_thread = Thread.new { @server.start }
-    
-    # Wait for server to start
-    wait_for_server
+    @server.start
   end
   
   def teardown
     @server&.stop
-    @server_thread&.kill
-    @server_thread&.join(1)
-    
-    # Give the OS time to release the port
-    sleep 0.1
   end
   
   def test_simple_get_request
@@ -179,20 +171,4 @@ class TestIntegration < Minitest::Test
     end
   end
   
-  private
-  
-  def wait_for_server
-    Timeout.timeout(5) do
-      loop do
-        begin
-          Net::HTTP.get_response(URI("http://localhost:#{TEST_PORT}/"))
-          break
-        rescue Errno::ECONNREFUSED, Errno::EADDRNOTAVAIL
-          sleep 0.1
-        end
-      end
-    end
-  rescue Timeout::Error
-    flunk "Server failed to start within 5 seconds"
-  end
 end

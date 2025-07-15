@@ -22,19 +22,19 @@ module Cougar
       # Freeze the app so it can be shared across Ractors
       @app.freeze
 
-      close_ports = Ractor::Port.new
+      control_ports = Ractor::Port.new
 
       # Create worker Ractors
       @workers.times do |i|
-        worker = Ractor.new(@server, @app, i, close_ports) do |server, app, worker_id, close_ports|
+        worker = Ractor.new(@server, @app, i, control_ports) do |server, app, worker_id, control_ports|
 
-          close_port = Ractor::Port.new
+          control_port = Ractor::Port.new
           worker_thread = Thread.current
-          Thread.new do |th|
-            close_port.receive
+          control_thread = Thread.new do |th|
+            control_port.receive
             server.close
           end
-          close_ports << close_port
+          control_ports << control_port
 
           loop do
             begin
@@ -57,24 +57,28 @@ module Cougar
                 request.respond(status, headers, body)
               end
             rescue => e
+              puts e
             end
           end
 
+          control_thread.join
         end
 
         @worker_ractors << worker
       end
 
-      @close_ports = @workers.times.map { close_ports.receive }
+      @control_ports = @workers.times.map { control_ports.receive }
+    end
 
-      # Wait for interrupt
+    def run
+      start
       sleep
     end
 
     def stop
-      @server&.close
+      @server.close
 
-      @close_ports.each { |port| port.send(:close) }
+      @control_ports.each { |port| port.send(:close) }
 
       # Wait for workers to finish
       @worker_ractors.each(&:join)

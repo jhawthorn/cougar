@@ -17,4 +17,4 @@ trap("INT") do
   exit
 end
 
-server.start
+server.run
