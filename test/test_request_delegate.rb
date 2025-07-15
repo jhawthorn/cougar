@@ -68,6 +68,8 @@ class TestRequestDelegate < Minitest::Test
   end
   
   def test_on_headers_complete_sets_rack_environment
+    @delegate.on_header_field("Host")
+    @delegate.on_header_value("localhost:9292")
     @delegate.on_headers_complete
     
     env = @delegate.env

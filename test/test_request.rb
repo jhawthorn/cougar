@@ -61,7 +61,7 @@ class TestRequest < Minitest::Test
   end
 
   def test_rack_environment_setup
-    client = StringIO.new("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
+    client = StringIO.new("GET / HTTP/1.1\r\nHost: localhost:9292\r\n\r\n")
     request = Cougar::Request.new(client)
     
     assert request.parse
