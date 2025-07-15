@@ -5,6 +5,8 @@ require "llhttp"
 require_relative "http_statuses"
 
 module Cougar
+  SERVER_SOFTWARE = "Cougar/#{VERSION}"
+
   class RequestDelegate < LLHttp::Delegate
     attr_reader :env, :complete
 
@@ -86,6 +88,13 @@ module Cougar
       @client = client
       @delegate = RequestDelegate.new
       @parser = LLHttp::Parser.new(@delegate, type: :request)
+
+      # Set REMOTE_ADDR from client socket
+      if @client.respond_to?(:peeraddr)
+        @delegate.env["REMOTE_ADDR"] = @client.peeraddr[3]
+      else
+        @delegate.env["REMOTE_ADDR"] = "127.0.0.1"
+      end
     end
 
     def parse
@@ -101,6 +110,13 @@ module Cougar
     def env
       # Add REQUEST_METHOD from parser
       @delegate.env["REQUEST_METHOD"] = @parser.method_name
+
+      # Add HTTP_VERSION
+      @delegate.env["HTTP_VERSION"] = "HTTP/#{@parser.http_major}.#{@parser.http_minor}"
+
+      # Add SERVER_SOFTWARE
+      @delegate.env["SERVER_SOFTWARE"] = SERVER_SOFTWARE
+
       @delegate.env
     end
 
