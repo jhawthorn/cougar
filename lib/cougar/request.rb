@@ -5,7 +5,7 @@ require "llhttp"
 require_relative "http_statuses"
 
 module Cougar
-  SERVER_SOFTWARE = "Cougar/#{VERSION}"
+  SERVER_SOFTWARE = "Cougar/#{VERSION}".freeze
 
   class RequestDelegate < LLHttp::Delegate
     attr_reader :env, :complete
@@ -62,6 +62,9 @@ module Cougar
 
       # Convert headers to Rack format
       @headers.each do |name, value|
+        # Skip Content-Type and Content-Length as they have special handling
+        next if name == "Content-Type" || name == "Content-Length"
+
         key = "HTTP_#{name}"
         key.upcase!
         key.tr!("-", "_")
@@ -111,8 +114,8 @@ module Cougar
       # Add REQUEST_METHOD from parser
       @delegate.env["REQUEST_METHOD"] = @parser.method_name
 
-      # Add HTTP_VERSION
-      @delegate.env["HTTP_VERSION"] = "HTTP/#{@parser.http_major}.#{@parser.http_minor}"
+      # Add SERVER_PROTOCOL
+      @delegate.env["SERVER_PROTOCOL"] = "HTTP/#{@parser.http_major}.#{@parser.http_minor}"
 
       # Add SERVER_SOFTWARE
       @delegate.env["SERVER_SOFTWARE"] = SERVER_SOFTWARE

@@ -58,11 +58,15 @@ module Cougar
                 request.respond(status, headers, body)
               end
             rescue => e
-              puts e
+              $stderr.puts "[Worker #{worker_id}] #{e.class}: #{e.message}"
+              $stderr.puts e.backtrace
+            ensure
+              client.close
             end
           end
 
           control_thread.join
+          puts "stopped worker #{worker_id}"
         end
 
         @worker_ractors << worker
