@@ -17,6 +17,7 @@ module Cougar
 
     def start
       @server = TCPServer.new(@host, @port)
+      @port = @server.addr[1]  # Get the actual port if it was 0
       puts "Cougar listening on #{@host}:#{@port} with #{@workers} workers"
 
       # Freeze the app so it can be shared across Ractors

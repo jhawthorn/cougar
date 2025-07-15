@@ -6,8 +6,6 @@ require "json"
 require "timeout"
 
 class TestIntegration < Minitest::Test
-  TEST_PORT = 9293
-  
   class TestApp
     def self.call(env)
       case env["PATH_INFO"]
@@ -33,8 +31,9 @@ class TestIntegration < Minitest::Test
   end
   
   def setup
-    @server = Cougar::Server.new(TestApp, host: "localhost", port: TEST_PORT, workers: 2)
+    @server = Cougar::Server.new(TestApp, host: "localhost", port: 0, workers: 2)
     @server.start
+    @port = @server.port
   end
   
   def teardown
@@ -42,7 +41,7 @@ class TestIntegration < Minitest::Test
   end
   
   def test_simple_get_request
-    response = Net::HTTP.get_response(URI("http://localhost:#{TEST_PORT}/"))
+    response = Net::HTTP.get_response(URI("http://localhost:#{@port}/"))
     
     assert_equal "200", response.code
     assert_equal "Hello World", response.body
@@ -50,7 +49,7 @@ class TestIntegration < Minitest::Test
   end
   
   def test_json_response
-    response = Net::HTTP.get_response(URI("http://localhost:#{TEST_PORT}/json"))
+    response = Net::HTTP.get_response(URI("http://localhost:#{@port}/json"))
     
     assert_equal "200", response.code
     assert_equal '{"message": "success"}', response.body
@@ -61,7 +60,7 @@ class TestIntegration < Minitest::Test
   end
   
   def test_post_request_with_body
-    uri = URI("http://localhost:#{TEST_PORT}/echo")
+    uri = URI("http://localhost:#{@port}/echo")
     http = Net::HTTP.new(uri.host, uri.port)
     
     request = Net::HTTP::Post.new(uri)
@@ -76,7 +75,7 @@ class TestIntegration < Minitest::Test
   end
   
   def test_put_request
-    uri = URI("http://localhost:#{TEST_PORT}/echo")
+    uri = URI("http://localhost:#{@port}/echo")
     http = Net::HTTP.new(uri.host, uri.port)
     
     request = Net::HTTP::Put.new(uri)
@@ -91,7 +90,7 @@ class TestIntegration < Minitest::Test
   end
   
   def test_custom_headers
-    uri = URI("http://localhost:#{TEST_PORT}/headers")
+    uri = URI("http://localhost:#{@port}/headers")
     http = Net::HTTP.new(uri.host, uri.port)
     
     request = Net::HTTP::Get.new(uri)
@@ -106,14 +105,14 @@ class TestIntegration < Minitest::Test
   end
   
   def test_404_response
-    response = Net::HTTP.get_response(URI("http://localhost:#{TEST_PORT}/nonexistent"))
+    response = Net::HTTP.get_response(URI("http://localhost:#{@port}/nonexistent"))
     
     assert_equal "404", response.code
     assert_equal "Not Found", response.body
   end
   
   def test_query_parameters
-    response = Net::HTTP.get_response(URI("http://localhost:#{TEST_PORT}/echo?foo=bar&baz=qux"))
+    response = Net::HTTP.get_response(URI("http://localhost:#{@port}/echo?foo=bar&baz=qux"))
     
     assert_equal "200", response.code
     assert_includes response.body, "Method: GET"
@@ -125,7 +124,7 @@ class TestIntegration < Minitest::Test
     
     10.times do |i|
       threads << Thread.new do
-        response = Net::HTTP.get_response(URI("http://localhost:#{TEST_PORT}/"))
+        response = Net::HTTP.get_response(URI("http://localhost:#{@port}/"))
         responses << response
       end
     end
@@ -142,7 +141,7 @@ class TestIntegration < Minitest::Test
   def test_large_post_body
     large_body = "x" * 10000
     
-    uri = URI("http://localhost:#{TEST_PORT}/echo")
+    uri = URI("http://localhost:#{@port}/echo")
     http = Net::HTTP.new(uri.host, uri.port)
     
     request = Net::HTTP::Post.new(uri)
@@ -157,7 +156,7 @@ class TestIntegration < Minitest::Test
   end
   
   def test_multiple_rapid_requests
-    uri = URI("http://localhost:#{TEST_PORT}/")
+    uri = URI("http://localhost:#{@port}/")
     
     responses = []
     100.times do
