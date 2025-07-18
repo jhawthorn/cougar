@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "socket"
+require_relative "ractor_worker"
 
 module Cougar
   class Server
@@ -12,7 +13,7 @@ module Cougar
       @port = port
       @workers = workers
       @server = nil
-      @worker_ractors = []
+      @workers_list = []
     end
 
     def start
@@ -25,56 +26,11 @@ module Cougar
       # Freeze the app so it can be shared across Ractors
       @app.freeze
 
-      control_ports = Ractor::Port.new
-
       # Create worker Ractors
       @workers.times do |i|
-        worker = Ractor.new(@server, @app, i, control_ports) do |server, app, worker_id, control_ports|
-
-          control_port = Ractor::Port.new
-          worker_thread = Thread.current
-          control_thread = Thread.new do |th|
-            control_port.receive
-            server.close
-          end
-          control_ports << control_port
-
-          loop do
-            begin
-              client = server.accept
-            rescue IOError, Errno::EBADF => e
-              # Server socket was closed, exit gracefully
-              break
-            end
-
-            begin
-              # Create a new Request instance for this connection
-              request = Cougar::Request.new(client)
-
-              # Parse the HTTP request
-              if request.parse
-                # Call the Rack app
-                status, headers, body = app.call(request.env)
-
-                # Send the response
-                request.respond(status, headers, body)
-              end
-            rescue => e
-              $stderr.puts "[Worker #{worker_id}] #{e.class}: #{e.message}"
-              $stderr.puts e.backtrace
-            ensure
-              client.close
-            end
-          end
-
-          control_thread.join
-          puts "stopped worker #{worker_id}"
-        end
-
-        @worker_ractors << worker
+        worker = RactorWorker.new(i, @server, @app)
+        @workers_list << worker
       end
-
-      @control_ports = @workers.times.map { control_ports.receive }
     end
 
     def run
@@ -85,10 +41,24 @@ module Cougar
     def stop
       @server.close
 
-      @control_ports.each { |port| port.send(:close) }
+      @workers_list.each(&:stop)
 
       # Wait for workers to finish
-      @worker_ractors.each(&:join)
+      @workers_list.each(&:join)
+    end
+
+    def status
+      response_port = Ractor::Port.new
+      workers = @workers_list
+      workers.each { |worker| worker.send_status_request(response_port) }
+      statuses = workers.size.times.map { response_port.receive }
+      response_port.close
+      statuses
+    end
+
+    def inspect
+      worker_statuses = status
+      "#<#{self.class.name}:0x#{object_id.to_s(16)} @host=#{@host.inspect} @port=#{@port} @workers=#{@workers} workers=#{worker_statuses.inspect}>"
     end
 
     private
