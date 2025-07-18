@@ -67,7 +67,7 @@ module Cougar
 
         key = "HTTP_#{name}"
         key.upcase!
-        key.tr!("-", "_")
+        key.gsub!("-", "_")
         @env[key] = value
       end
 
