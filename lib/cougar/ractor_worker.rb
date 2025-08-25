@@ -2,13 +2,13 @@
 
 module Cougar
   class RactorWorker
-    attr_reader :id, :ractor
+    attr_reader :worker_id, :ractor
 
-    def initialize(id, server, app)
-      @id = id
+    def initialize(worker_id, server, app)
+      @worker_id = worker_id
       control_port_port = Ractor::Port.new
       
-      @ractor = Ractor.new(server, app, id, control_port_port) do |server, app, worker_id, control_port_port|
+      @ractor = Ractor.new(server, app, worker_id, control_port_port) do |server, app, worker_id, control_port_port|
         control_port = Ractor::Port.new
         worker_thread = Thread.current
         control_thread = Thread.new do |th|
@@ -57,7 +57,6 @@ module Cougar
         end
 
         control_thread.join
-        puts "stopped worker #{worker_id}"
       end
       
       @control_port = control_port_port.receive
