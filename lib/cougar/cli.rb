@@ -79,7 +79,7 @@ module Cougar
       # Start the server
       server = Cougar::Server.new(app, **server_options)
       
-      puts "Starting Cougar server on #{@options[:host]}:#{@options[:port]}"
+      puts "Starting Cougar server on http://#{@options[:host]}:#{@options[:port]}"
       puts "* Workers: #{server_options[:workers] || ENV.fetch("RUBY_MAX_CPU", 8)}"
       puts "* Loading app from: #{@options[:config]}"
       
