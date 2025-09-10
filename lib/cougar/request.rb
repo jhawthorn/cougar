@@ -101,7 +101,7 @@ module Cougar
     end
 
     def parse
-      while !@delegate.complete && (data = @client.readpartial(16384))
+      while !@delegate.complete && (data = fast_read(16384))
         @parser << data
       end
 
@@ -123,16 +123,51 @@ module Cougar
       @delegate.env
     end
 
+    WRITE_TIMEOUT = 10
+    READ_TIMEOUT = 10
+    SOCKET_WRITE_ERR_MSG = "Socket timeout writing data"
+    SOCKET_READ_ERR_MSG = "Socket timeout reading data"
+
+    def fast_read(size)
+      begin
+        @client.read_nonblock(size)
+      rescue Errno::EAGAIN, Errno::EWOULDBLOCK
+        unless @client.wait_readable(READ_TIMEOUT)
+          raise SOCKET_READ_ERR_MSG
+        end
+        retry
+      rescue Errno::EPIPE, SystemCallError, IOError
+        raise SOCKET_READ_ERR_MSG
+      end
+    end
+
+    def fast_write(str)
+      n = 0
+      byte_size = str.bytesize
+      while n < byte_size
+        begin
+          n += @client.write_nonblock(n.zero? ? str : str.byteslice(n..-1))
+        rescue Errno::EAGAIN, Errno::EWOULDBLOCK
+          unless @client.wait_writable(WRITE_TIMEOUT)
+            raise SOCKET_WRITE_ERR_MSG
+          end
+          retry
+        rescue Errno::EPIPE, SystemCallError, IOError
+          raise SOCKET_WRITE_ERR_MSG
+        end
+      end
+    end
+
     def respond(status, headers, body)
-      @client.write("HTTP/1.1 #{status} #{status_text(status)}\r\n")
+      fast_write("HTTP/1.1 #{status} #{status_text(status)}\r\n")
 
       headers.each do |name, value|
-        @client.write("#{name}: #{value}\r\n")
+        fast_write("#{name}: #{value}\r\n")
       end
-      @client.write("\r\n")
+      fast_write("\r\n")
 
       body.each do |chunk|
-        @client.write(chunk)
+        fast_write(chunk)
       end
 
       body.close if body.respond_to?(:close)
