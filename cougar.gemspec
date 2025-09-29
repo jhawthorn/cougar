@@ -12,7 +12,7 @@ Gem::Specification.new do |spec|
   spec.description = "Cougar is a high-performance web server built from the ground up with Ruby's Ractors for true parallelism"
   spec.homepage = "https://github.com/jhawthorn/cougar"
   spec.license = "MIT"
-  spec.required_ruby_version = ">= 3.1.0"
+  spec.required_ruby_version = ">= 3.5.a"
 
   spec.metadata["homepage_uri"] = spec.homepage
   spec.metadata["source_code_uri"] = "https://github.com/jhawthorn/cougar"

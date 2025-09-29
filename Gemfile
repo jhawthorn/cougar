@@ -11,4 +11,4 @@ gem "rake", "~> 13.0"
 gem "minitest", "~> 5.16"
 
 gem "rack"
-gem "llhttp", github: "jhawthorn/llhttp", branch: "ractor"
+gem "picohttp"

@@ -132,12 +132,55 @@ class TestRequest < Minitest::Test
   def test_root_path
     client = StringIO.new("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
     request = Cougar::Request.new(client)
-    
+
     assert request.parse
-    
+
     env = request.env
     assert_equal "/", env["REQUEST_URI"]
     assert_equal "/", env["PATH_INFO"]
     assert_equal "", env["QUERY_STRING"]
+  end
+
+  def test_server_port_defaults
+    client = StringIO.new("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n")
+    request = Cougar::Request.new(client)
+
+    assert request.parse
+
+    env = request.env
+    assert_equal "example.com", env["SERVER_NAME"]
+    assert_equal "80", env["SERVER_PORT"]  # Should default to 80
+  end
+
+  def test_no_host_header_defaults
+    client = StringIO.new("GET / HTTP/1.1\r\n\r\n")
+    request = Cougar::Request.new(client)
+
+    assert request.parse
+
+    env = request.env
+    assert_equal "localhost", env["SERVER_NAME"]  # Should default to localhost
+    assert_equal "80", env["SERVER_PORT"]         # Should default to 80
+  end
+
+  def test_incomplete_request_parsing
+    # Incomplete request should return false from parse
+    client = StringIO.new("GET / HTTP/1.1\r\nHost: localhost\r\n")  # Missing final \r\n
+    request = Cougar::Request.new(client)
+
+    refute request.parse
+  end
+
+  def test_request_with_content_length_zero
+    request_data = "POST /submit HTTP/1.1\r\nHost: localhost\r\nContent-Length: 0\r\n\r\n"
+    client = StringIO.new(request_data)
+    request = Cougar::Request.new(client)
+
+    assert request.parse
+
+    env = request.env
+    assert_equal "POST", env["REQUEST_METHOD"]
+    assert_equal "0", env["CONTENT_LENGTH"]
+    assert_equal "", env["rack.input"].read
   end
 end

@@ -1,126 +1,55 @@
 # frozen_string_literal: true
 
 require "stringio"
-require "llhttp"
+require "picohttp"
 require_relative "http_statuses"
 
 module Cougar
   SERVER_SOFTWARE = "Cougar/#{VERSION}".freeze
 
-  class RequestDelegate < LLHttp::Delegate
-    attr_reader :env, :complete
-
-    def initialize
-      @env = {}
-      @headers = {}
-      @body = String.new
-      @complete = false
-      @current_header = nil
-    end
-
-    def on_message_begin
-      @headers.clear
-      @body = String.new
-      @env.clear
-      @complete = false
-    end
-
-    def on_url(url)
-      @env["REQUEST_URI"] = url
-      path, query = url.split("?", 2)
-      @env["PATH_INFO"] = path || "/"
-      @env["QUERY_STRING"] = query || ""
-    end
-
-    def on_header_field(field)
-      @current_header = field
-    end
-
-    def on_header_value(value)
-      @headers[@current_header] = value if @current_header
-    end
-
-    def on_headers_complete
-      @env["SCRIPT_NAME"] = ""
-
-      # Extract SERVER_NAME and SERVER_PORT from Host header
-      if @headers["Host"]
-        host, port = @headers["Host"].split(":", 2)
-        @env["SERVER_NAME"] = host
-        @env["SERVER_PORT"] = port || "80"
-      else
-        @env["SERVER_NAME"] = "localhost"
-        @env["SERVER_PORT"] = "80"
-      end
-
-      @env["rack.version"] = [1, 3]
-      @env["rack.url_scheme"] = "http"
-      @env["rack.errors"] = $stderr
-      @env["rack.multithread"] = false
-      @env["rack.multiprocess"] = true
-      @env["rack.run_once"] = false
-
-      # Convert headers to Rack format
-      @headers.each do |name, value|
-        # Skip Content-Type and Content-Length as they have special handling
-        next if name == "Content-Type" || name == "Content-Length"
-
-        key = "HTTP_#{name}"
-        key.upcase!
-        key.gsub!("-", "_")
-        @env[key] = value
-      end
-
-      # Handle special headers
-      @env["CONTENT_TYPE"] = @headers["Content-Type"] if @headers["Content-Type"]
-      @env["CONTENT_LENGTH"] = @headers["Content-Length"] if @headers["Content-Length"]
-    end
-
-    def on_body(chunk)
-      @body << chunk
-    end
-
-    def on_message_complete
-      @env["rack.input"] = StringIO.new(@body)
-      @complete = true
-    end
-  end
 
   class Request
     def initialize(client)
       @client = client
-      @delegate = RequestDelegate.new
-      @parser = LLHttp::Parser.new(@delegate, type: :request)
-
-      # Set REMOTE_ADDR from client socket
-      if @client.respond_to?(:peeraddr)
-        @delegate.env["REMOTE_ADDR"] = @client.peeraddr[3]
-      else
-        @delegate.env["REMOTE_ADDR"] = "127.0.0.1"
-      end
+      @buffer = String.new
+      @env = nil
+      @body_offset = nil
     end
 
     def parse
-      while !@delegate.complete && (data = fast_read(16384))
-        @parser << data
+      # Read data until we have a complete HTTP request
+      while @env.nil?
+        data = fast_read(16384)
+        break unless data
+
+        @buffer << data
+
+        # Try to parse the accumulated buffer
+        @env = Picohttp.parse_request_env(@buffer)
+
+        if @env
+          # Find where headers end and body begins
+          @body_offset = @buffer.index("\r\n\r\n")
+          @body_offset += 4 if @body_offset
+          break
+        end
       end
 
-      @delegate.complete
+      return false unless @env
+
+      # Add additional Rack environment variables
+      setup_rack_env
+
+      # Handle request body if present
+      setup_request_body
+
+      true
     rescue EOFError
-      @delegate.complete
+      false
     end
 
     def env
-      # Add REQUEST_METHOD from parser
-      @delegate.env["REQUEST_METHOD"] = @parser.method_name
-
-      # Add SERVER_PROTOCOL
-      @delegate.env["SERVER_PROTOCOL"] = "HTTP/#{@parser.http_major}.#{@parser.http_minor}"
-
-      # Add SERVER_SOFTWARE
-      @delegate.env["SERVER_SOFTWARE"] = SERVER_SOFTWARE
-
-      @delegate.env
+      @env
     end
 
     WRITE_TIMEOUT = 10
@@ -176,6 +105,56 @@ module Cougar
     end
 
     private
+
+    def setup_rack_env
+      # Set REMOTE_ADDR from client socket
+      if @client.respond_to?(:peeraddr)
+        @env["REMOTE_ADDR"] = @client.peeraddr[3]
+      else
+        @env["REMOTE_ADDR"] = "127.0.0.1"
+      end
+
+      # Add standard Rack environment variables
+      @env["SCRIPT_NAME"] = ""
+      @env["REQUEST_URI"] = @env["PATH_INFO"]
+      @env["REQUEST_URI"] += "?#{@env["QUERY_STRING"]}" unless @env["QUERY_STRING"].empty?
+
+      # Extract SERVER_NAME and SERVER_PORT from Host header
+      if @env["HTTP_HOST"]
+        host, port = @env["HTTP_HOST"].split(":", 2)
+        @env["SERVER_NAME"] = host
+        @env["SERVER_PORT"] = port || "80"
+      else
+        @env["SERVER_NAME"] = "localhost"
+        @env["SERVER_PORT"] = "80"
+      end
+
+      @env["rack.version"] = [1, 3]
+      @env["rack.url_scheme"] = "http"
+      @env["rack.errors"] = $stderr
+      @env["rack.multithread"] = false
+      @env["rack.multiprocess"] = true
+      @env["rack.run_once"] = false
+
+      # Add SERVER_SOFTWARE
+      @env["SERVER_SOFTWARE"] = SERVER_SOFTWARE
+    end
+
+    def setup_request_body
+      body_data = @buffer[@body_offset..-1] || ""
+
+      # Read any remaining body data if Content-Length is specified
+      if @env["CONTENT_LENGTH"]
+        content_length = @env["CONTENT_LENGTH"].to_i
+        while body_data.bytesize < content_length
+          data = fast_read(16384)
+          break unless data
+          body_data << data
+        end
+      end
+
+      @env["rack.input"] = StringIO.new(body_data)
+    end
 
     def status_text(code)
       HttpStatuses.text_for(code)
