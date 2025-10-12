@@ -65,6 +65,9 @@ module Cougar
     end
 
     def start_server
+      _, max_file_limit = Process.getrlimit(Process::RLIMIT_NOFILE)
+      Process.setrlimit(Process::RLIMIT_NOFILE, max_file_limit)
+
       # Load the Rack app
       app, _options = Rack::Builder.parse_file(@options[:config])
 
