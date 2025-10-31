@@ -65,7 +65,9 @@ module Cougar
           raise SOCKET_READ_ERR_MSG
         end
         retry
-      rescue Errno::EPIPE, SystemCallError, IOError
+      rescue EOFError
+        raise
+      rescue Errno::EPIPE, SystemCallError, IOError => e
         raise SOCKET_READ_ERR_MSG
       end
     end
@@ -81,7 +83,7 @@ module Cougar
             raise SOCKET_WRITE_ERR_MSG
           end
           retry
-        rescue Errno::EPIPE, SystemCallError, IOError
+        rescue Errno::EPIPE, SystemCallError, IOError => e
           raise SOCKET_WRITE_ERR_MSG
         end
       end
@@ -90,10 +92,28 @@ module Cougar
     def respond(status, headers, body)
       fast_write("HTTP/1.1 #{status} #{status_text(status)}\r\n")
 
-      headers.each do |name, value|
-        fast_write("#{name}: #{value}\r\n")
+      should_keepalive = true
+      if should_keepalive
+        headers["Connection"] = "keep-alive"
       end
-      fast_write("\r\n")
+
+      if !headers["Content-Length"]
+        old_body = body
+        body = []
+        length = 0
+        old_body.each do |chunk|
+          body << chunk
+          length += chunk.bytesize
+        end
+        headers["Content-Length"] = length.to_s
+      end
+
+      header_str = +""
+      headers.each do |name, value|
+        header_str << "#{name}: #{value}\r\n"
+      end
+      header_str << "\r\n"
+      fast_write(header_str)
 
       body.each do |chunk|
         fast_write(chunk)
@@ -101,7 +121,9 @@ module Cougar
 
       body.close if body.respond_to?(:close)
     ensure
-      @client.close rescue nil
+      unless should_keepalive
+        @client.close rescue nil
+      end
     end
 
     private

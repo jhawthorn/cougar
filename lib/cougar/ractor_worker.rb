@@ -31,29 +31,40 @@ module Cougar
         loop do
           begin
             client = server.accept
+            client.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
           rescue IOError, Errno::EBADF => e
             # Server socket was closed, exit gracefully
             break
           end
 
-          begin
+          keepalive = true
+          while keepalive
             # Create a new Request instance for this connection
             request = Cougar::Request.new(client)
 
-            # Parse the HTTP request
-            if request.parse
+            begin
+              # Parse the HTTP request
+              if !request.parse
+                break
+              end
+
               # Call the Rack app
               status, headers, body = app.call(request.env)
 
               # Send the response
               request.respond(status, headers, body)
+
+              client.flush
+
+              #keepalive &&= !client.closed? && !client.eof?
+            rescue => e
+              $stderr.puts "[Worker #{worker_id}] #{e.class}: #{e.message}"
+              $stderr.puts e.backtrace
+              keepalive = false
             end
-          rescue => e
-            $stderr.puts "[Worker #{worker_id}] #{e.class}: #{e.message}"
-            $stderr.puts e.backtrace
-          ensure
-            client.close
           end
+        ensure
+          client&.close
         end
 
         control_thread.join
