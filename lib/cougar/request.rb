@@ -3,6 +3,7 @@
 require "stringio"
 require "picohttp"
 require_relative "http_statuses"
+require_relative "rack/error_stream"
 
 module Cougar
   SERVER_SOFTWARE = "Cougar/#{VERSION}".freeze
@@ -176,7 +177,7 @@ module Cougar
 
       @env["rack.version"] = [1, 3]
       @env["rack.url_scheme"] = "http"
-      @env["rack.errors"] = $stderr
+      @env["rack.errors"] = Cougar::Rack::ERROR_STREAM
       @env["rack.multithread"] = false
       @env["rack.multiprocess"] = true
       @env["rack.run_once"] = false

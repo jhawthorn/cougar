@@ -72,7 +72,7 @@ class TestRequest < Minitest::Test
     assert_equal "9292", env["SERVER_PORT"]
     assert_equal [1, 3], env["rack.version"]
     assert_equal "http", env["rack.url_scheme"]
-    assert_equal $stderr, env["rack.errors"]
+    assert_equal Cougar::Rack::ERROR_STREAM, env["rack.errors"]
     assert_equal false, env["rack.multithread"]
     assert_equal true, env["rack.multiprocess"]
     assert_equal false, env["rack.run_once"]
