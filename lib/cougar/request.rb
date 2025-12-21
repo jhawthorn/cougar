@@ -58,17 +58,15 @@ module Cougar
     SOCKET_READ_ERR_MSG = "Socket timeout reading data"
 
     def fast_read(size)
-      begin
-        @client.read_nonblock(size)
-      rescue Errno::EAGAIN, Errno::EWOULDBLOCK
-        unless @client.wait_readable(READ_TIMEOUT)
-          raise SOCKET_READ_ERR_MSG
+      while true
+        ret = @client.read_nonblock(size, exception: false)
+        if ret == :wait_readable
+          unless @client.wait_readable(READ_TIMEOUT)
+            raise SOCKET_READ_ERR_MSG
+          end
+        else
+          return ret
         end
-        retry
-      rescue EOFError
-        raise
-      rescue Errno::EPIPE, SystemCallError, IOError => e
-        raise SOCKET_READ_ERR_MSG
       end
     end
 
@@ -76,15 +74,13 @@ module Cougar
       n = 0
       byte_size = str.bytesize
       while n < byte_size
-        begin
-          n += @client.write_nonblock(n.zero? ? str : str.byteslice(n..-1))
-        rescue Errno::EAGAIN, Errno::EWOULDBLOCK
+        ret = @client.write_nonblock(n.zero? ? str : str.byteslice(n..-1), exception: false)
+        if ret == :wait_writable
           unless @client.wait_writable(WRITE_TIMEOUT)
             raise SOCKET_WRITE_ERR_MSG
           end
-          retry
-        rescue Errno::EPIPE, SystemCallError, IOError => e
-          raise SOCKET_WRITE_ERR_MSG
+        else
+          n += ret
         end
       end
     end
