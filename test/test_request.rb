@@ -76,7 +76,7 @@ class TestRequest < Minitest::Test
     assert_equal false, env["rack.multithread"]
     assert_equal true, env["rack.multiprocess"]
     assert_equal false, env["rack.run_once"]
-    assert_kind_of StringIO, env["rack.input"]
+    assert_equal Cougar::Rack::EMPTY_INPUT, env["rack.input"]
   end
 
   def test_empty_body

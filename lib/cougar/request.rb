@@ -4,6 +4,7 @@ require "stringio"
 require "picohttp"
 require_relative "http_statuses"
 require_relative "rack/error_stream"
+require_relative "rack/empty_input"
 
 module Cougar
   SERVER_SOFTWARE = "Cougar/#{VERSION}".freeze
@@ -187,15 +188,18 @@ module Cougar
     end
 
     def setup_request_body
+      content_length = @env["CONTENT_LENGTH"]&.to_i || 0
+
+      if content_length == 0
+        @env["rack.input"] = Cougar::Rack::EMPTY_INPUT
+        return
+      end
+
       body_data = @buffer.byteslice(@body_offset, @buffer.bytesize - @body_offset) || ""
 
-      # Read any remaining body data if Content-Length is specified
-      if @env["CONTENT_LENGTH"]
-        content_length = @env["CONTENT_LENGTH"].to_i
-        while body_data.bytesize < content_length
-          break unless fast_read(16384, @read_buf)
-          body_data << @read_buf
-        end
+      while body_data.bytesize < content_length
+        break unless fast_read(16384, @read_buf)
+        body_data << @read_buf
       end
 
       @env["rack.input"] = StringIO.new(body_data)
