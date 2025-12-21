@@ -157,17 +157,61 @@ class TestIntegration < Minitest::Test
   
   def test_multiple_rapid_requests
     uri = URI("http://localhost:#{@port}/")
-    
+
     responses = []
     100.times do
       response = Net::HTTP.get_response(uri)
       responses << response
     end
-    
+
     responses.each do |response|
       assert_equal "200", response.code
       assert_equal "Hello World", response.body
     end
   end
-  
+
+  def test_keepalive
+    uri = URI("http://localhost:#{@port}/")
+
+    Net::HTTP.start(uri.host, uri.port) do |http|
+      # Send multiple requests on the same connection
+      5.times do
+        request = Net::HTTP::Get.new(uri)
+        response = http.request(request)
+
+        assert_equal "200", response.code
+        assert_equal "Hello World", response.body
+        assert_equal "keep-alive", response["Connection"]
+      end
+    end
+  end
+
+  def test_pipelining
+    socket = TCPSocket.new("localhost", @port)
+
+    requests = "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n" * 3
+    socket.write(requests)
+
+    responses = []
+    3.times do
+      response = +""
+      while (line = socket.gets) != "\r\n"
+        response << line
+      end
+      if response =~ /Content-Length: (\d+)/i
+        body = socket.read($1.to_i)
+        response << "\r\n" << body
+      end
+      responses << response
+    end
+
+    socket.close
+
+    assert_equal 3, responses.length
+    responses.each do |response|
+      assert_match(/HTTP\/1\.1 200/, response)
+      assert_match(/Hello World/, response)
+    end
+  end
+
 end

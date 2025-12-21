@@ -38,11 +38,17 @@ module Cougar
           end
 
           keepalive = true
+          request = Cougar::Request.new(client)
+          first_request = true
           while keepalive
-            # Create a new Request instance for this connection
-            request = Cougar::Request.new(client)
-
             begin
+              unless first_request || request.has_buffered_data?
+                unless client.wait_readable(0.1)
+                  break
+                end
+              end
+              first_request = false
+
               # Parse the HTTP request
               if !request.parse
                 break
@@ -56,7 +62,7 @@ module Cougar
 
               client.flush
 
-              #keepalive &&= !client.closed? && !client.eof?
+              request.reset_for_next_request
             rescue => e
               $stderr.puts "[Worker #{worker_id}] #{e.class}: #{e.message}"
               $stderr.puts e.backtrace

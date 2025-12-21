@@ -12,27 +12,43 @@ module Cougar
     def initialize(client)
       @client = client
       @buffer = String.new
+      reset_for_next_request
+    end
+
+    def reset_for_next_request
+      if @body_offset
+        content_length = @env&.fetch("CONTENT_LENGTH", "0").to_i
+        consumed = @body_offset + content_length
+        @buffer = @buffer[consumed..] || String.new
+      end
       @env = nil
       @body_offset = nil
+    end
+
+    def has_buffered_data?
+      !@buffer.empty?
     end
 
     def parse
       # Read data until we have a complete HTTP request
       while @env.nil?
+        # Try to parse the accumulated buffer
+        unless @buffer.empty?
+          @env = Picohttp.parse_request_env(@buffer)
+
+          if @env
+            # Find where headers end and body begins
+            @body_offset = @buffer.index("\r\n\r\n")
+            @body_offset += 4 if @body_offset
+            break
+          end
+        end
+
+        # Need more data
         data = fast_read(16384)
         break unless data
 
         @buffer << data
-
-        # Try to parse the accumulated buffer
-        @env = Picohttp.parse_request_env(@buffer)
-
-        if @env
-          # Find where headers end and body begins
-          @body_offset = @buffer.index("\r\n\r\n")
-          @body_offset += 4 if @body_offset
-          break
-        end
       end
 
       return false unless @env
