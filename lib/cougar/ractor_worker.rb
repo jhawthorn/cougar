@@ -58,9 +58,11 @@ module Cougar
               status, headers, body = app.call(request.env)
 
               # Send the response
-              request.respond(status, headers, body)
+              keepalive = request.respond(status, headers, body)
 
               client.flush
+
+              break unless keepalive
 
               request.reset_for_next_request
             rescue => e

@@ -214,4 +214,33 @@ class TestIntegration < Minitest::Test
     end
   end
 
+  def test_connection_close
+    socket = TCPSocket.new("localhost", @port)
+
+    socket.write("GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+
+    response = socket.read
+
+    assert_match(/HTTP\/1\.1 200/, response)
+    assert_match(/Connection: close/i, response)
+    assert_match(/Hello World/, response)
+    assert socket.eof?
+
+    socket.close
+  end
+
+  def test_http_1_0
+    socket = TCPSocket.new("localhost", @port)
+
+    socket.write("GET / HTTP/1.0\r\nHost: localhost\r\n\r\n")
+
+    response = socket.read
+
+    assert_match(/HTTP\/1\.0 200/, response)
+    assert_match(/Hello World/, response)
+    assert socket.eof?
+
+    socket.close
+  end
+
 end

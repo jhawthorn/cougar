@@ -12,6 +12,7 @@ module Cougar
     def initialize(client)
       @client = client
       @buffer = String.new
+      @read_buf = String.new(capacity: 16384)
       reset_for_next_request
     end
 
@@ -19,7 +20,11 @@ module Cougar
       if @body_offset
         content_length = @env&.fetch("CONTENT_LENGTH", "0").to_i
         consumed = @body_offset + content_length
-        @buffer = @buffer[consumed..] || String.new
+        if consumed >= @buffer.bytesize
+          @buffer.clear
+        else
+          @buffer = @buffer.byteslice(consumed, @buffer.bytesize - consumed)
+        end
       end
       @env = nil
       @body_offset = nil
@@ -45,10 +50,9 @@ module Cougar
         end
 
         # Need more data
-        data = fast_read(16384)
-        break unless data
+        break unless fast_read(16384, @read_buf)
 
-        @buffer << data
+        @buffer << @read_buf
       end
 
       return false unless @env
@@ -73,10 +77,10 @@ module Cougar
     SOCKET_WRITE_ERR_MSG = "Socket timeout writing data"
     SOCKET_READ_ERR_MSG = "Socket timeout reading data"
 
-    def fast_read(size)
+    def fast_read(size, buf)
       while true
-        ret = @client.read_nonblock(size, exception: false)
-        if ret == :wait_readable
+        ret = @client.read_nonblock(size, buf, exception: false)
+        if :wait_readable == ret
           unless @client.wait_readable(READ_TIMEOUT)
             raise SOCKET_READ_ERR_MSG
           end
@@ -91,7 +95,7 @@ module Cougar
       byte_size = str.bytesize
       while n < byte_size
         ret = @client.write_nonblock(n.zero? ? str : str.byteslice(n..-1), exception: false)
-        if ret == :wait_writable
+        if :wait_writable == ret
           unless @client.wait_writable(WRITE_TIMEOUT)
             raise SOCKET_WRITE_ERR_MSG
           end
@@ -102,12 +106,17 @@ module Cougar
     end
 
     def respond(status, headers, body)
-      fast_write("HTTP/1.1 #{status} #{status_text(status)}\r\n")
-
-      should_keepalive = true
-      if should_keepalive
-        headers["Connection"] = "keep-alive"
+      if @env["SERVER_PROTOCOL"] == "HTTP/1.0"
+        protocol = "HTTP/1.0"
+        should_keepalive = false
+      else
+        protocol = "HTTP/1.1"
+        should_keepalive = !@env["HTTP_CONNECTION"]&.casecmp?("close")
       end
+
+      fast_write("#{protocol} #{status} #{status_text(status)}\r\n")
+
+      headers["Connection"] = should_keepalive ? "keep-alive" : "close"
 
       if !headers["Content-Length"]
         old_body = body
@@ -132,10 +141,8 @@ module Cougar
       end
 
       body.close if body.respond_to?(:close)
-    ensure
-      unless should_keepalive
-        @client.close rescue nil
-      end
+
+      should_keepalive
     end
 
     private
@@ -154,10 +161,14 @@ module Cougar
       @env["REQUEST_URI"] += "?#{@env["QUERY_STRING"]}" unless @env["QUERY_STRING"].empty?
 
       # Extract SERVER_NAME and SERVER_PORT from Host header
-      if @env["HTTP_HOST"]
-        host, port = @env["HTTP_HOST"].split(":", 2)
-        @env["SERVER_NAME"] = host
-        @env["SERVER_PORT"] = port || "80"
+      if (host = @env["HTTP_HOST"])
+        if (colon = host.byteindex(":"))
+          @env["SERVER_NAME"] = host.byteslice(0, colon)
+          @env["SERVER_PORT"] = host.byteslice(colon + 1, host.bytesize - colon - 1)
+        else
+          @env["SERVER_NAME"] = host
+          @env["SERVER_PORT"] = "80"
+        end
       else
         @env["SERVER_NAME"] = "localhost"
         @env["SERVER_PORT"] = "80"
@@ -175,15 +186,14 @@ module Cougar
     end
 
     def setup_request_body
-      body_data = @buffer[@body_offset..-1] || ""
+      body_data = @buffer.byteslice(@body_offset, @buffer.bytesize - @body_offset) || ""
 
       # Read any remaining body data if Content-Length is specified
       if @env["CONTENT_LENGTH"]
         content_length = @env["CONTENT_LENGTH"].to_i
         while body_data.bytesize < content_length
-          data = fast_read(16384)
-          break unless data
-          body_data << data
+          break unless fast_read(16384, @read_buf)
+          body_data << @read_buf
         end
       end
 
