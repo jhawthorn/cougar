@@ -56,8 +56,24 @@ module Cougar
       511 => 'Network Authentication Required',
     }.freeze
 
+    STATUS_LINES_11 = STATUSES.to_h do |code, text|
+      [code, -"HTTP/1.1 #{code} #{text}\r\n"]
+    end.freeze
+
+    STATUS_LINES_10 = STATUSES.to_h do |code, text|
+      [code, -"HTTP/1.0 #{code} #{text}\r\n"]
+    end.freeze
+
     def self.text_for(code)
       STATUSES[code] || "Unknown"
+    end
+
+    def self.status_line_11(code)
+      STATUS_LINES_11[code]
+    end
+
+    def self.status_line_10(code)
+      STATUS_LINES_10[code]
     end
   end
 end

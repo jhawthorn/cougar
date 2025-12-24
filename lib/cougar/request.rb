@@ -15,6 +15,7 @@ module Cougar
       @client = client
       @buffer = String.new
       @read_buf = String.new(capacity: 16384)
+      @remote_addr = client.respond_to?(:remote_address) ? client.remote_address.ip_address : "127.0.0.1"
       reset_for_next_request
     end
 
@@ -109,18 +110,16 @@ module Cougar
 
     def respond(status, headers, body)
       if @env["SERVER_PROTOCOL"] == "HTTP/1.0"
-        protocol = "HTTP/1.0"
+        status_line = HttpStatuses.status_line_10(status)
         should_keepalive = false
       else
-        protocol = "HTTP/1.1"
+        status_line = HttpStatuses.status_line_11(status)
         should_keepalive = !@env["HTTP_CONNECTION"]&.casecmp?("close")
       end
 
-      fast_write("#{protocol} #{status} #{status_text(status)}\r\n")
+      headers["connection"] = should_keepalive ? "keep-alive" : "close"
 
-      headers["Connection"] = should_keepalive ? "keep-alive" : "close"
-
-      if !headers["Content-Length"]
+      if !headers["content-length"]
         old_body = body
         body = []
         length = 0
@@ -128,34 +127,40 @@ module Cougar
           body << chunk
           length += chunk.bytesize
         end
-        headers["Content-Length"] = length.to_s
+        headers["content-length"] = length.to_s
       end
 
-      header_str = +""
+      buf = +""
+      buf << status_line
       headers.each do |name, value|
-        header_str << "#{name}: #{value}\r\n"
+        buf << name << ": " << value << "\r\n"
       end
-      header_str << "\r\n"
-      fast_write(header_str)
+      buf << "\r\n"
 
       body.each do |chunk|
-        fast_write(chunk)
+        buf << chunk
       end
+      fast_write(buf)
 
       body.close if body.respond_to?(:close)
 
       should_keepalive
     end
 
+    RACK_ENV_CONST = {
+      "rack.version" => [1, 3].freeze,
+      "rack.url_scheme" => "http",
+      "rack.errors" => Cougar::Rack::ERROR_STREAM,
+      "rack.multithread" => false,
+      "rack.multiprocess" => true,
+      "rack.run_once" => false,
+      "SERVER_SOFTWARE" => SERVER_SOFTWARE,
+    }.freeze
+
     private
 
     def setup_rack_env
-      # Set REMOTE_ADDR from client socket
-      if @client.respond_to?(:peeraddr)
-        @env["REMOTE_ADDR"] = @client.peeraddr[3]
-      else
-        @env["REMOTE_ADDR"] = "127.0.0.1"
-      end
+      @env["REMOTE_ADDR"] = @remote_addr
 
       # Add standard Rack environment variables
       @env["SCRIPT_NAME"] = ""
@@ -176,15 +181,7 @@ module Cougar
         @env["SERVER_PORT"] = "80"
       end
 
-      @env["rack.version"] = [1, 3]
-      @env["rack.url_scheme"] = "http"
-      @env["rack.errors"] = Cougar::Rack::ERROR_STREAM
-      @env["rack.multithread"] = false
-      @env["rack.multiprocess"] = true
-      @env["rack.run_once"] = false
-
-      # Add SERVER_SOFTWARE
-      @env["SERVER_SOFTWARE"] = SERVER_SOFTWARE
+      @env.update(RACK_ENV_CONST)
     end
 
     def setup_request_body
