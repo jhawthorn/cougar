@@ -119,7 +119,7 @@ module Cougar
 
       headers["connection"] = should_keepalive ? "keep-alive" : "close"
 
-      if !headers["content-length"]
+      if !headers["content-length"] && status >= 200 && status != 204 && status != 304
         old_body = body
         body = []
         length = 0
