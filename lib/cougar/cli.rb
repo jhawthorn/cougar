@@ -69,7 +69,7 @@ module Cougar
       Process.setrlimit(Process::RLIMIT_NOFILE, max_file_limit)
 
       # Load the Rack app
-      app, _options = Rack::Builder.parse_file(@options[:config])
+      app, _options = ::Rack::Builder.parse_file(@options[:config])
 
       # Create server options
       server_options = {
