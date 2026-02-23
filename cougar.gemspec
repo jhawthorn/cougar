@@ -31,7 +31,7 @@ Gem::Specification.new do |spec|
   spec.executables = spec.files.grep(%r{\Aexe/}) { |f| File.basename(f) }
   spec.require_paths = ["lib"]
 
-  spec.add_dependency "picohttp"
+  spec.add_dependency "picohttp", ">= 0.3.0"
   spec.add_dependency "rack"
 
   # For more information and examples about making a new gem, check out our

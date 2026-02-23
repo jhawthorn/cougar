@@ -161,26 +161,6 @@ module Cougar
 
     def setup_rack_env
       @env["REMOTE_ADDR"] = @remote_addr
-
-      # Add standard Rack environment variables
-      @env["SCRIPT_NAME"] = ""
-      @env["REQUEST_URI"] = @env["PATH_INFO"]
-      @env["REQUEST_URI"] += "?#{@env["QUERY_STRING"]}" unless @env["QUERY_STRING"].empty?
-
-      # Extract SERVER_NAME and SERVER_PORT from Host header
-      if (host = @env["HTTP_HOST"])
-        if (colon = host.byteindex(":"))
-          @env["SERVER_NAME"] = host.byteslice(0, colon)
-          @env["SERVER_PORT"] = host.byteslice(colon + 1, host.bytesize - colon - 1)
-        else
-          @env["SERVER_NAME"] = host
-          @env["SERVER_PORT"] = "80"
-        end
-      else
-        @env["SERVER_NAME"] = "localhost"
-        @env["SERVER_PORT"] = "80"
-      end
-
       @env.update(RACK_ENV_CONST)
     end
 

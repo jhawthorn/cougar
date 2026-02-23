@@ -141,27 +141,6 @@ class TestRequest < Minitest::Test
     assert_equal "", env["QUERY_STRING"]
   end
 
-  def test_server_port_defaults
-    client = StringIO.new("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n")
-    request = Cougar::Request.new(client)
-
-    assert request.parse
-
-    env = request.env
-    assert_equal "example.com", env["SERVER_NAME"]
-    assert_equal "80", env["SERVER_PORT"]  # Should default to 80
-  end
-
-  def test_no_host_header_defaults
-    client = StringIO.new("GET / HTTP/1.1\r\n\r\n")
-    request = Cougar::Request.new(client)
-
-    assert request.parse
-
-    env = request.env
-    assert_equal "localhost", env["SERVER_NAME"]  # Should default to localhost
-    assert_equal "80", env["SERVER_PORT"]         # Should default to 80
-  end
 
   def test_incomplete_request_parsing
     # Incomplete request should return false from parse
