@@ -9,7 +9,8 @@ module Cougar
       @options = {
         host: "localhost",
         port: 9292,
-        config: "config.ru"
+        config: "config.ru",
+        environment: ENV["RACK_ENV"] || "development"
       }
     end
 
@@ -43,6 +44,10 @@ module Cougar
           @options[:host] = host
         end
 
+        opts.on("-e", "--environment ENVIRONMENT", "Rack environment (default: development)") do |env|
+          @options[:environment] = env
+        end
+
         opts.on("-w", "--workers NUM", Integer, "Number of worker processes") do |workers|
           @options[:workers] = workers
         end
@@ -67,6 +72,8 @@ module Cougar
     def start_server
       _, max_file_limit = Process.getrlimit(Process::RLIMIT_NOFILE)
       Process.setrlimit(Process::RLIMIT_NOFILE, max_file_limit)
+
+      ENV["RACK_ENV"] = @options[:environment]
 
       # Load the Rack app
       app, _options = ::Rack::Builder.parse_file(@options[:config])
