@@ -8,9 +8,9 @@ class TestRequest < Minitest::Test
   def test_simple_get_request
     client = StringIO.new("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
     request = Cougar::Request.new(client)
-    
+
     assert request.parse
-    
+
     env = request.env
     assert_equal "GET", env["REQUEST_METHOD"]
     assert_equal "/", env["PATH_INFO"]
@@ -21,9 +21,9 @@ class TestRequest < Minitest::Test
   def test_get_request_with_query_string
     client = StringIO.new("GET /path?foo=bar&baz=qux HTTP/1.1\r\nHost: example.com\r\n\r\n")
     request = Cougar::Request.new(client)
-    
+
     assert request.parse
-    
+
     env = request.env
     assert_equal "GET", env["REQUEST_METHOD"]
     assert_equal "/path", env["PATH_INFO"]
@@ -35,9 +35,9 @@ class TestRequest < Minitest::Test
     request_data = "POST /submit HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: 16\r\n\r\n{\"test\": \"data\"}"
     client = StringIO.new(request_data)
     request = Cougar::Request.new(client)
-    
+
     assert request.parse
-    
+
     env = request.env
     assert_equal "POST", env["REQUEST_METHOD"]
     assert_equal "/submit", env["PATH_INFO"]
@@ -50,9 +50,9 @@ class TestRequest < Minitest::Test
     request_data = "GET /headers HTTP/1.1\r\nHost: test.com\r\nUser-Agent: TestAgent\r\nAccept: text/html\r\nX-Custom-Header: custom-value\r\n\r\n"
     client = StringIO.new(request_data)
     request = Cougar::Request.new(client)
-    
+
     assert request.parse
-    
+
     env = request.env
     assert_equal "test.com", env["HTTP_HOST"]
     assert_equal "TestAgent", env["HTTP_USER_AGENT"]
@@ -63,9 +63,9 @@ class TestRequest < Minitest::Test
   def test_rack_environment_setup
     client = StringIO.new("GET / HTTP/1.1\r\nHost: localhost:9292\r\n\r\n")
     request = Cougar::Request.new(client)
-    
+
     assert request.parse
-    
+
     env = request.env
     assert_equal "", env["SCRIPT_NAME"]
     assert_equal "localhost", env["SERVER_NAME"]
@@ -82,9 +82,9 @@ class TestRequest < Minitest::Test
   def test_empty_body
     client = StringIO.new("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
     request = Cougar::Request.new(client)
-    
+
     assert request.parse
-    
+
     env = request.env
     assert_equal "", env["rack.input"].read
   end
@@ -93,9 +93,9 @@ class TestRequest < Minitest::Test
     request_data = "PUT /update HTTP/1.1\r\nHost: localhost\r\nContent-Type: text/plain\r\nContent-Length: 11\r\n\r\nHello World"
     client = StringIO.new(request_data)
     request = Cougar::Request.new(client)
-    
+
     assert request.parse
-    
+
     env = request.env
     assert_equal "PUT", env["REQUEST_METHOD"]
     assert_equal "/update", env["PATH_INFO"]
@@ -108,9 +108,9 @@ class TestRequest < Minitest::Test
     request_data = "GET / HTTP/1.1\r\nHost: localhost\r\nContent-Type: text/html\r\nX-Forwarded-For: 192.168.1.1\r\n\r\n"
     client = StringIO.new(request_data)
     request = Cougar::Request.new(client)
-    
+
     assert request.parse
-    
+
     env = request.env
     assert_equal "localhost", env["HTTP_HOST"]
     assert_equal "text/html", env["CONTENT_TYPE"]
@@ -120,9 +120,9 @@ class TestRequest < Minitest::Test
   def test_request_uri_parsing
     client = StringIO.new("GET /path/to/resource?param=value HTTP/1.1\r\nHost: localhost\r\n\r\n")
     request = Cougar::Request.new(client)
-    
+
     assert request.parse
-    
+
     env = request.env
     assert_equal "/path/to/resource?param=value", env["REQUEST_URI"]
     assert_equal "/path/to/resource", env["PATH_INFO"]
@@ -161,5 +161,19 @@ class TestRequest < Minitest::Test
     assert_equal "POST", env["REQUEST_METHOD"]
     assert_equal "0", env["CONTENT_LENGTH"]
     assert_equal "", env["rack.input"].read
+  end
+
+  def test_response_writes_array_header_values_as_separate_headers
+    request_data = "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n"
+    client = StringIO.new(request_data.dup)
+    request = Cougar::Request.new(client)
+
+    assert request.parse
+    assert request.respond(200, { "set-cookie" => ["a=1", "b=2"] }, ["OK"])
+
+    response = client.string.byteslice(request_data.bytesize..)
+    assert_includes response, "set-cookie: a=1\r\n"
+    assert_includes response, "set-cookie: b=2\r\n"
+    assert_match(/\AHTTP\/1\.1 200 OK\r\n/, response)
   end
 end

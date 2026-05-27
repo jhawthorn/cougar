@@ -133,7 +133,14 @@ module Cougar
       buf = +""
       buf << status_line
       headers.each do |name, value|
-        buf << name << ": " << value << "\r\n"
+        case value
+        when Array
+          value.each do |v|
+            buf << name << ": " << v << "\r\n"
+          end
+        else
+          buf << name << ": " << value << "\r\n"
+        end
       end
       buf << "\r\n"
 
