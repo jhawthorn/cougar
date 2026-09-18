@@ -4,11 +4,17 @@ module Cougar
   class RactorWorker
     attr_reader :worker_id, :ractor
 
-    def initialize(worker_id, server, app)
+    def initialize(worker_id, listener, app)
       @worker_id = worker_id
       control_port_port = Ractor::Port.new
-      
-      @ractor = Ractor.new(server, app, worker_id, control_port_port) do |server, app, worker_id, control_port_port|
+
+      # Ruby 4.1.0dev (97207692c2) can't copy an IO into a Ractor, so each
+      # worker gets its own dup'd fd.
+      listener = listener.dup
+      listener.autoclose = false
+
+      @ractor = Ractor.new(listener.fileno, app, worker_id, control_port_port) do |server_fd, app, worker_id, control_port_port|
+        server = TCPServer.for_fd(server_fd)
         control_port = Ractor::Port.new
         worker_thread = Thread.current
         control_thread = Thread.new do |th|
