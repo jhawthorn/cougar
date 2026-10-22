@@ -93,9 +93,18 @@ module Cougar
       puts "* Workers: #{server_options[:workers] || ENV.fetch("RUBY_MAX_CPU", 8)}"
       puts "* Loading app from: #{@options[:config]}"
       
-      trap("INT") do
-        puts "\nShutting down..."
-        server.stop
+      stopping = false
+      %w[INT TERM].each do |signal|
+        trap(signal) do
+          if stopping
+            # A second signal while stopping forces an immediate exit.
+            exit!(1)
+          end
+          stopping = true
+
+          puts "\nShutting down..."
+          server.stop
+        end
       end
 
       server.run
