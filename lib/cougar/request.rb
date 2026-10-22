@@ -11,6 +11,9 @@ module Cougar
 
 
   class Request
+    # Raised when the client stops accepting a response mid-way.
+    class TimeoutError < StandardError; end
+
     def initialize(client)
       @client = client
       @buffer = String.new
@@ -37,36 +40,44 @@ module Cougar
       !@buffer.empty?
     end
 
+    # Parses a request from the buffered data, reading whatever more the
+    # client has sent without blocking. Returns true once a complete request
+    # (headers and any body) is available, false if the client disconnected,
+    # and :wait_readable if more data has to arrive first. Call again once
+    # the client is readable to continue where it left off.
     def parse
-      # Read data until we have a complete HTTP request
-      while @env.nil?
-        # Try to parse the accumulated buffer
-        unless @buffer.empty?
+      loop do
+        if @env.nil? && !@buffer.empty?
           @env = Picohttp.parse_request_env(@buffer)
 
           if @env
             # Find where headers end and body begins
-            @body_offset = @buffer.index("\r\n\r\n")
-            @body_offset += 4 if @body_offset
-            break
+            @body_offset = @buffer.index("\r\n\r\n") + 4
+          end
+        end
+
+        if @env
+          content_length = @env["CONTENT_LENGTH"]&.to_i || 0
+          if @buffer.bytesize - @body_offset >= content_length
+            # Add additional Rack environment variables
+            setup_rack_env
+
+            setup_request_body(content_length)
+
+            return true
           end
         end
 
         # Need more data
-        break unless fast_read(16384, @read_buf)
-
-        @buffer << @read_buf
+        case (ret = @client.read_nonblock(16384, @read_buf, exception: false))
+        when nil
+          return false
+        when :wait_readable
+          return :wait_readable
+        else
+          @buffer << ret
+        end
       end
-
-      return false unless @env
-
-      # Add additional Rack environment variables
-      setup_rack_env
-
-      # Handle request body if present
-      setup_request_body
-
-      true
     rescue EOFError
       false
     end
@@ -76,22 +87,7 @@ module Cougar
     end
 
     WRITE_TIMEOUT = 10
-    READ_TIMEOUT = 10
     SOCKET_WRITE_ERR_MSG = "Socket timeout writing data"
-    SOCKET_READ_ERR_MSG = "Socket timeout reading data"
-
-    def fast_read(size, buf)
-      while true
-        ret = @client.read_nonblock(size, buf, exception: false)
-        if :wait_readable == ret
-          unless @client.wait_readable(READ_TIMEOUT)
-            raise SOCKET_READ_ERR_MSG
-          end
-        else
-          return ret
-        end
-      end
-    end
 
     def fast_write(str)
       n = 0
@@ -100,7 +96,7 @@ module Cougar
         ret = @client.write_nonblock(n.zero? ? str : str.byteslice(n..-1), exception: false)
         if :wait_writable == ret
           unless @client.wait_writable(WRITE_TIMEOUT)
-            raise SOCKET_WRITE_ERR_MSG
+            raise TimeoutError, SOCKET_WRITE_ERR_MSG
           end
         else
           n += ret
@@ -171,22 +167,13 @@ module Cougar
       @env.update(RACK_ENV_CONST)
     end
 
-    def setup_request_body
-      content_length = @env["CONTENT_LENGTH"]&.to_i || 0
-
+    def setup_request_body(content_length)
       if content_length == 0
         @env["rack.input"] = Cougar::Rack::EMPTY_INPUT
         return
       end
 
-      body_data = @buffer.byteslice(@body_offset, @buffer.bytesize - @body_offset) || ""
-
-      while body_data.bytesize < content_length
-        break unless fast_read(16384, @read_buf)
-        body_data << @read_buf
-      end
-
-      @env["rack.input"] = StringIO.new(body_data)
+      @env["rack.input"] = StringIO.new(@buffer.byteslice(@body_offset, content_length))
     end
 
     def status_text(code)

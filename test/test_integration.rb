@@ -30,6 +30,18 @@ class TestIntegration < Minitest::Test
     end
   end
   
+  # Reads one HTTP/1.1 response from a raw socket, asserting a 200 status, and
+  # returns its body. Leaves the socket open for further keep-alive requests.
+  def read_response(socket)
+    status_line = socket.gets
+    assert_match(/\AHTTP\/1\.1 200/, status_line)
+    content_length = nil
+    while (line = socket.gets) != "\r\n"
+      content_length = $1.to_i if line =~ /\AContent-Length: (\d+)/i
+    end
+    socket.read(content_length)
+  end
+
   def setup
     @server = Cougar::Server.new(TestApp, host: "localhost", port: 0, workers: 2)
     @server.start
@@ -227,6 +239,93 @@ class TestIntegration < Minitest::Test
     assert socket.eof?
 
     socket.close
+  end
+
+  def test_idle_connections_do_not_block_other_requests
+    # The server has 2 workers. Connections that never send anything
+    # shouldn't stop others being served.
+    idle = Array.new(4) { TCPSocket.new("localhost", @port) }
+    sleep 0.1
+
+    response = Timeout.timeout(2) do
+      Net::HTTP.get_response(URI("http://localhost:#{@port}/"))
+    end
+
+    assert_equal "200", response.code
+    assert_equal "Hello World", response.body
+  ensure
+    idle&.each(&:close)
+  end
+
+  def test_partial_requests_do_not_block_other_requests
+    # Clients that have sent only part of a request shouldn't hold up a
+    # worker either.
+    partial = Array.new(4) { TCPSocket.new("localhost", @port) }
+    partial.each { |socket| socket.write("GET / HTTP/1.1\r\nHost: loc") }
+    sleep 0.1
+
+    response = Timeout.timeout(2) do
+      Net::HTTP.get_response(URI("http://localhost:#{@port}/"))
+    end
+    assert_equal "200", response.code
+
+    # And they are still served once the rest arrives.
+    Timeout.timeout(2) do
+      partial.each do |socket|
+        socket.write("alhost\r\n\r\n")
+        assert_equal "Hello World", read_response(socket)
+      end
+    end
+  ensure
+    partial&.each(&:close)
+  end
+
+  def test_more_keepalive_connections_than_workers
+    # Hold more keep-alive connections open than there are workers, then
+    # make a request on each of them.
+    sockets = Array.new(6) { TCPSocket.new("localhost", @port) }
+
+    Timeout.timeout(2) do
+      sockets.each do |socket|
+        socket.write("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
+        assert_equal "Hello World", read_response(socket)
+      end
+    end
+  ensure
+    sockets&.each(&:close)
+  end
+
+  def test_keepalive_connection_survives_idle_time
+    socket = TCPSocket.new("localhost", @port)
+
+    2.times do
+      socket.write("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
+      assert_equal "Hello World", read_response(socket)
+      sleep 0.3
+    end
+  ensure
+    socket&.close
+  end
+
+  def test_stop_is_fast_with_open_connections
+    idle = Array.new(4) { TCPSocket.new("localhost", @port) }
+    keepalive = TCPSocket.new("localhost", @port)
+    keepalive.write("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
+    read_response(keepalive)
+    sleep 0.1
+
+    started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    @server.stop
+    @server.join
+    elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+
+    assert_operator elapsed, :<, 1
+    (idle + [keepalive]).each do |socket|
+      assert socket.eof?, "expected server to close the connection"
+    end
+  ensure
+    idle&.each(&:close)
+    keepalive&.close
   end
 
   def test_http_1_0

@@ -35,12 +35,18 @@ module Cougar
 
     def run
       start
+      join
+    end
 
-      # Wait for workers to finish
+    # Wait for workers to finish
+    def join
       @workers_list.each(&:join)
     end
 
     def stop
+      return if @stopped
+      @stopped = true
+
       @server.close
 
       @workers_list.each(&:stop)
